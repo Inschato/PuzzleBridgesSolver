@@ -25,6 +25,7 @@
 */
 
 import java.util.Arrays;
+import java.util.HashSet;
 import java.util.ArrayList;
 import java.util.Scanner;
 import java.io.File;
@@ -45,25 +46,95 @@ public class BridgesSolver
 	public static int[][] Solve(int[][] puzzleGrid)
 	{
 		dumpGrid(puzzleGrid);
+		ArrayList<Edge> edgeList = generateEdgeList(puzzleGrid);
+		for (Edge e: edgeList)
+		{
+			System.out.println(e);
+		}
 		return puzzleGrid;
+	}
+	
+	// n is the # of vertices in the puzzle
+	public static boolean RecursiveSolve(int[][] puzzleGrid, ArrayList<Edge> edges, HashSet<Edge> S, int n)
+	{
+		if (S.size() >= n) 
+		{
+			updateGrid(puzzleGrid, edges, S); // Since we're working with an edge list we'll need to make sure the grid we're passing in here is the fully processed one
+			return verifySolution(puzzleGrid);
+		}
+		return false;
+	}
+	
+	public static Edge findEdge(int[][] puzzleGrid, int y, int x, int dY, int dX)
+	{
+		Vertex currentSquare = new Vertex(y, x, puzzleGrid[y][x]);
+		y += dY;
+		x += dX;		
+		while (inBounds(puzzleGrid, y, x))
+		{
+			if (isVertex(puzzleGrid[y][x]))
+			{
+				return new Edge(currentSquare, new Vertex(y, x, puzzleGrid[y][x]), (dY != 0) ? 1 : 0);
+			}
+			y += dY;
+			x += dX;
+		}
+		return null;
+	}
+	
+	public static ArrayList<Edge> generateEdgeList(int[][] puzzleGrid)
+	{
+		ArrayList<Edge> edgeList = new ArrayList<Edge>();
+		for (int y = 0; y < puzzleGrid.length; y++)
+		{
+			for (int x = 0; x < puzzleGrid[0].length; x++)
+			{
+				if (puzzleGrid[y][x] >= 2 && puzzleGrid[y][x] <= 8)
+				{					
+					// Check for an edge in each direction					
+					Edge e = findEdge(puzzleGrid, y, x, 0, -1);
+					if (e != null)
+						edgeList.add(e);
+					e = findEdge(puzzleGrid, y, x, 0, 1);
+					if (e != null)
+						edgeList.add(e);
+					e = findEdge(puzzleGrid, y, x, -1, 0);
+					if (e != null)
+						edgeList.add(e);
+					e = findEdge(puzzleGrid, y, x, 1, 0);
+					if (e != null)
+						edgeList.add(e);
+				}
+			}
+		}
+		return edgeList;
+	}
+	
+	// Update the grid by removing edges in 'edges' and adding edges in S
+	// TODO: Figure out how to differentiate between 1-2 edges in the same spot (Or is this just handled when we create the edge list)
+	public static void updateGrid(int[][] puzzleGrid, ArrayList<Edge> edges, HashSet<Edge> S)
+	{
+		
 	}
 
 	public static boolean verifySolution(int[][] puzzleGrid)
 	{
-		// Use this so after we've checked every vertex we check that every other space is empty.
+		// Use this so after we've checked every connected vertex we check that every other space is empty.
 		boolean[][] verified = new boolean[puzzleGrid.length][puzzleGrid[0].length];
 		boolean foundStart = false;
 		ArrayList<Vertex> queue = new ArrayList<Vertex>();
 		
 		// Just find a starting vertex and then do a breadth first search
+		// This way we also verify that everything is connected
 		for (int y = 0; y < puzzleGrid.length; y++)
 		{
 			for (int x = 0; x < puzzleGrid[0].length; x++)
 			{				
 				int square = puzzleGrid[y][x];
 				// Found a vertex
-				if (square >= 1 && square <= 8)
+				if (isVertex(square))
 				{
+					verified[y][x] = true;
 					queue.add(new Vertex(y, x, square));
 					foundStart = true;
 					break;
@@ -97,6 +168,7 @@ public class BridgesSolver
 				return false;
 			}
 		}
+		// Every unverified square should be an empty space.
 		for (int y = 0; y < puzzleGrid.length; y++)
 		{
 			for (int x = 0; x < puzzleGrid[0].length; x++)
@@ -206,6 +278,66 @@ public class BridgesSolver
 		}
 	}
 	
+	public static class Edge
+	{
+		public Vertex a;
+		public Vertex b;
+		public int direction;
+		public ArrayList<Vertex> edgeSquares;
+		
+		public Edge(Vertex a, Vertex b, int direction)
+		{
+			this.a = a;
+			this.b = b;
+			this.direction = direction;
+			edgeSquares = new ArrayList<Vertex>();
+			addLine(a.y, a.x, b.y, b.x);
+			removeSquare(a);
+			removeSquare(b);
+		}
+		
+		public void addSquare(Vertex v)
+		{
+			edgeSquares.add(v);
+		}
+		
+		public void removeSquare(Vertex v)
+		{
+			edgeSquares.remove(v);
+		}
+		
+		public void addLine(int y1, int x1, int y2, int x2)
+		{
+			if (y1 == y2)
+			{
+				while (x1 > x2)
+				{
+					addSquare(new Vertex(y1, x1--, 0));
+				}
+				while (x1 < x2)
+				{
+					addSquare(new Vertex(y1, x1++, 0));
+				}
+			}
+			else
+			{
+				while (y1 > y2)
+				{
+					addSquare(new Vertex(y1--, x1, 0));
+				}
+				while (y1 < y2)
+				{
+					addSquare(new Vertex(y1++, x1, 0));
+				}
+			}			
+		}
+		
+		public String toString()
+		{
+			return "E: " + a.x + "," + a.y + " - " + b.x + "," + b.y;
+		}
+	}
+	
 	public static void dumpGrid(int[][] puzzleGrid)
 	{
 		for (int[] row : puzzleGrid)
@@ -231,7 +363,7 @@ public class BridgesSolver
 		}
 	}
 	
-	// Input code adapted from code by Bill Bird (~2015)
+	// Input code adapted from code by Bill Bird (~2015, UVic)
 	public static void main(String[] args)
 	{
 		Scanner s;
@@ -266,11 +398,11 @@ public class BridgesSolver
 			System.out.printf("Reading graph %d\n",graphNum);
 			int x = s.nextInt();
 			int y = s.nextInt();
-			int[][] G = new int[x][y];
+			int[][] G = new int[y][x];
 			int valuesRead = 0;
-			for (int i = 0; i < x && s.hasNextInt(); i++)
+			for (int i = 0; i < y && s.hasNextInt(); i++)
 			{
-				for (int j = 0; j < y && s.hasNextInt(); j++)
+				for (int j = 0; j < x && s.hasNextInt(); j++)
 				{
 					G[i][j] = s.nextInt();
 					valuesRead++;

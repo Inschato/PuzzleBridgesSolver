@@ -32,6 +32,7 @@ Search this graph for vertices that meet established triviality rules for the ga
 Will need to re-generate this graph every time a new edge is added to correctly remove neighbours that no longer exist because edges
 are blocking them.
 --> Might just be able to scan the columns/rows the edge is in.
+--> Add up all the numbers and divide by 2 = number of edges our solution should have (so we know when we've recursed enough)
 
 We're done when all numbers are 0.
 It may not be possible to achieve this through only the triviality rules, so we'd have to use a recursive search tree to check the remaining possibilities (like our independent set assignment)
