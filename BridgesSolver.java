@@ -1,4 +1,7 @@
-/* BridgesSolver.java   
+/* BridgesSolver.java
+
+   This is a solver for 'Hashiwokakero'
+   
    To interactively provide test inputs, run the program with
 	java BridgesSolver
 	
@@ -44,27 +47,67 @@ public class BridgesSolver
 		Double Vertical			21
 	 */
 	public static int[][] Solve(int[][] puzzleGrid)
-	{
-		dumpGrid(puzzleGrid);
+	{		
 		ArrayList<Edge> edgeList = generateEdgeList(puzzleGrid);
+		ArrayList<Edge> edges = new ArrayList<Edge>(edgeList);
+		HashSet<Edge> S = new HashSet<Edge>();
+		int n = computeCardinality(puzzleGrid)/2;
+		/*
 		for (Edge e: edgeList)
 		{
 			System.out.println(e);
 		}
+		*/
+		RecursiveSolve(puzzleGrid, edgeList, edges, S, n);		
 		return puzzleGrid;
 	}
 	
-	// n is the # of vertices in the puzzle
-	public static boolean RecursiveSolve(int[][] puzzleGrid, ArrayList<Edge> edges, HashSet<Edge> S, int n)
+	public static int computeCardinality(int[][] puzzleGrid)
 	{
-		if (S.size() >= n) 
+		int cardinality = 0;
+		for (int y = 0; y < puzzleGrid.length; y++)
 		{
-			updateGrid(puzzleGrid, edges, S); // Since we're working with an edge list we'll need to make sure the grid we're passing in here is the fully processed one
+			for (int x = 0; x < puzzleGrid[0].length; x++)
+			{				
+				int square = puzzleGrid[y][x];
+				// Found a vertex
+				if (isVertex(square))
+					cardinality += square;
+			}
+		}
+		return cardinality;
+	}
+	
+	// n is the # of vertices in the puzzle
+	public static boolean RecursiveSolve(int[][] puzzleGrid, ArrayList<Edge> edgeList, ArrayList<Edge> edges, HashSet<Edge> S, int n)
+	{			
+		if (S.size() >= n || edges.isEmpty())
+		{
+			if (S.size() < n)
+				return false;
+			updateGrid(puzzleGrid, edgeList, S); // Since we're working with an edge list we'll need to make sure the grid we're passing in here is the fully processed one
+			/*
+			dumpGrid(puzzleGrid);
+			for (Edge e: S)
+			{
+				System.out.println(e);
+			}
+			*/
 			return verifySolution(puzzleGrid);
 		}
+		ArrayList<Edge> edgesPrime = new ArrayList<Edge>(edges);
+		Edge e = edgesPrime.remove(0);
+		if (RecursiveSolve(puzzleGrid, edgeList, edgesPrime, S, n))
+			return true;
+		// Assume next edge is in the solution:
+		S.add(e);
+		if (RecursiveSolve(puzzleGrid, edgeList, edgesPrime, S, n))
+			return true;
+		S.remove(e);
 		return false;
 	}
 	
+	// Used by generateEdgeList()
 	public static Edge findEdge(int[][] puzzleGrid, int y, int x, int dY, int dX)
 	{
 		Vertex currentSquare = new Vertex(y, x, puzzleGrid[y][x]);
@@ -82,6 +125,7 @@ public class BridgesSolver
 		return null;
 	}
 	
+	// Iterate through the puzzleGrid and return a list of all possible edges
 	public static ArrayList<Edge> generateEdgeList(int[][] puzzleGrid)
 	{
 		ArrayList<Edge> edgeList = new ArrayList<Edge>();
@@ -110,10 +154,44 @@ public class BridgesSolver
 		return edgeList;
 	}
 	
-	// Update the grid by removing edges in 'edges' and adding edges in S
-	// TODO: Figure out how to differentiate between 1-2 edges in the same spot (Or is this just handled when we create the edge list)
+	
+	// Update the grid by removing edges in 'edges' and adding edges in S	
 	public static void updateGrid(int[][] puzzleGrid, ArrayList<Edge> edges, HashSet<Edge> S)
 	{
+		// First clear any unused edges
+		for (Edge e : edges)
+		{
+			for (Vertex v : e.edgeSquares)
+			{
+				if (!isVertex(puzzleGrid[v.y][v.x]))
+					puzzleGrid[v.y][v.x] = -1;
+			}
+		}
+		
+		for (Edge e : S)
+		{
+			// Horizontal edge
+			if (e.direction == 0)
+			{
+				for (Vertex v : e.edgeSquares)
+				{
+					if (puzzleGrid[v.y][v.x] == 10)
+						puzzleGrid[v.y][v.x] = 11;
+					else if (puzzleGrid[v.y][v.x] == -1)
+						puzzleGrid[v.y][v.x] = 10;
+				}
+			}
+			else // Vertical edge
+			{
+				for (Vertex v : e.edgeSquares)
+				{
+					if (puzzleGrid[v.y][v.x] == 20)
+						puzzleGrid[v.y][v.x] = 21;
+					else if (puzzleGrid[v.y][v.x] == -1)
+						puzzleGrid[v.y][v.x] = 20;
+				}
+			}
+		}
 		
 	}
 
@@ -185,6 +263,7 @@ public class BridgesSolver
 	}
 	
 	/* verifyEdge()
+		Used on the puzzleGrid array.
 		Given an edge type and direction continue along the direction until reaching a vertex.
 		If it encounters anything else (such as a different kind of edge
 		or the boundary of the grid) it returns false.
@@ -395,7 +474,7 @@ public class BridgesSolver
 			graphNum++;
 			if(graphNum != 1 && !s.hasNextInt())
 				break;
-			System.out.printf("Reading graph %d\n",graphNum);
+			System.out.printf("Reading grid %d\n",graphNum);
 			int x = s.nextInt();
 			int y = s.nextInt();
 			int[][] G = new int[y][x];
@@ -410,21 +489,28 @@ public class BridgesSolver
 			}
 			if (valuesRead < x*y)
 			{
-				System.out.printf("Adjacency matrix for graph %d contains too few values.\n",graphNum);
+				System.out.printf("Grid for graph %d contains too few values.\n",graphNum);
 				System.out.println("Expected " + x*y + " values");				
 				break;
 			}
+			System.out.println("Input grid:");
+			dumpGrid(G);
 			long startTime = System.currentTimeMillis();			
-			int[][] solvedPuzzle = Solve(G);
+			int[][] solvedPuzzle = Solve(G);						
 			long endTime = System.currentTimeMillis();
 			totalTimeSeconds += (endTime-startTime)/1000.0;
 						
 			if(!verifySolution(solvedPuzzle))
-				System.out.println("Invalid Solution Detected");
+				System.out.println("Invalid solution detected");
+			else
+			{
+				System.out.println("Solution:");
+				dumpGrid(solvedPuzzle);
+			}
 			System.out.println();
 		}
 		graphNum--;
-		System.out.printf("Processed %d graph%s.\n",graphNum,(graphNum != 1)?"s":"");
+		System.out.printf("Processed %d grid%s.\n",graphNum,(graphNum != 1)?"s":"");
 		System.out.printf("Total Time (seconds): %.2f\n",totalTimeSeconds);
 		System.out.printf("Average Time (seconds): %.2f\n",(graphNum>0)?totalTimeSeconds/graphNum:0);		
 	}
