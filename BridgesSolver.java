@@ -19,7 +19,7 @@
 	<row n>
 	
    Entry A[i][j] of the grid will be set to 1-8 if a vertex with that number
-   exists at that coordinate and . if it is an empty space.
+   exists at that coordinate and -1 if it is an empty space.
    
    An input file can contain an unlimited number of puzzle grids; each will be
    processed separately.
@@ -28,15 +28,15 @@
 */
 
 import java.util.Arrays;
-import java.util.HashSet;
 import java.util.ArrayList;
+import java.util.HashSet;
 import java.util.Scanner;
 import java.io.File;
 
 public class BridgesSolver
 {
-	static boolean checkEdgeDump = false;
-	static boolean invalidDump = false;
+	static final boolean checkEdgeDump = false;
+	static final boolean invalidDump = false;
 	
 	/* Solve(puzzleGrid)
 		Given an unsolved puzzle grid, returns a solved puzzle grid.
@@ -48,18 +48,312 @@ public class BridgesSolver
 	 */
 	public static int[][] Solve(int[][] puzzleGrid)
 	{		
+		Vertex[][] vertices = new Vertex[puzzleGrid.length][puzzleGrid[0].length];
+		for (int y = 0; y < puzzleGrid.length; y++)
+		{
+			for (int x = 0; x < puzzleGrid[0].length; x++)
+			{
+				if (isVertex(puzzleGrid[y][x]))
+				{
+					vertices[y][x] = (new Vertex(y,x,puzzleGrid[y][x]));
+				}
+			}
+		}
+		
+		int solutionEdges = computeCardinality(puzzleGrid)/2; // The number of edges in the solution
 		ArrayList<Edge> edgeList = generateEdgeList(puzzleGrid);
 		ArrayList<Edge> edges = new ArrayList<Edge>(edgeList);
-		HashSet<Edge> S = new HashSet<Edge>();
-		int n = computeCardinality(puzzleGrid)/2;
-		/*
-		for (Edge e: edgeList)
+		ArrayList<Edge> S = new ArrayList<Edge>();
+		
+		
+		// These optimization rules DO NOT properly work when considering nodes that already have edges connected
+		// At least for more complicated situations.
+		optimizeComputeNeighbours(vertices);
+		boolean optimizing = true;
+		while (optimizing)
 		{
-			System.out.println(e);
+			optimizing = false;
+			for (Vertex[] row : vertices)
+			{
+				for (Vertex v : row)
+				{
+					if (v == null)
+						continue;
+					switch (v.currentN)
+					{
+						// I wrote these in reverse order because my mind was in a different place
+						case -1:
+						case 0:
+							break;
+						case 8: // An 8 has all edges used
+							optimizeFillEdges(vertices, edges, S, v, v.getNeighbours());
+							optimizing = true;
+							break;
+						case 7: // A 7 as at least one edge in every direction
+							optimizeFillEdges(vertices, edges, S, v, v.getUniqueNeighbours());
+							optimizing = true;
+							break;
+						case 6:
+							if (v.getDegree() == 6) // Covers cases where a 6 has only 3 neighbours
+							{
+								optimizeFillEdges(vertices, edges, S, v, v.getNeighbours());
+								optimizing = true;
+							}
+							break;
+						case 5:
+							if (v.getNeighbourCount() == 3) // A 5 with only 3 neighbours has at least one edge to each
+							{
+								//System.out.println("Optimizing vertex of degree 5");
+								optimizeFillEdges(vertices, edges, S, v, v.getUniqueNeighbours());
+								optimizing = true;
+							}
+							else if (v.getDegree() == 5)
+							{
+								optimizeFillEdges(vertices, edges, S, v, v.getNeighbours());
+								optimizing = true;
+							}								
+							break;
+						case 4:
+							if (v.getDegree() == 4) // Exactly two neighbours means two lines to both of them
+							{
+								//System.out.println("Optimizing vertex of degree 4");
+								optimizeFillEdges(vertices, edges, S, v, v.getNeighbours());
+								optimizing = true;
+							}
+							break;
+						case 3:
+							if (v.getNeighbourCount() == 2) // A 3 with only 2 neighbours will have at least one line to both
+							{
+								//System.out.println("Optimizing vertex of degree 3");
+								optimizeFillEdges(vertices, edges, S, v, v.getUniqueNeighbours());
+								optimizing = true;
+							}
+							else if (v.getDegree() == 3)
+							{
+								//System.out.println("Optimizing vertex of degree 3");
+								optimizeFillEdges(vertices, edges, S, v, v.getNeighbours());
+								optimizing = true;
+							}
+							break;
+						case 2:
+							if (v.getDegree() == 2)
+							{
+								//System.out.println("Optimizing vertex of degree 2");
+								optimizeFillEdges(vertices, edges, S, v, v.getNeighbours());
+								optimizing = true;
+							}
+							else if (v.n == 2 && v.getNeighbourCount() == 2) // A 2 cannot connect itself to only another 2 or only a 1
+							{
+								//System.out.println(v + " --- " + v.getUniqueNeighbours());
+								ArrayList<Vertex> neighbours = v.getUniqueNeighbours();
+								if (neighbours.get(0).n == 1 || neighbours.get(0).n == 2)
+								{
+									optimizeRemoveEdge(edges, v, neighbours.get(1));
+									v.removeNeighbour(neighbours.get(1));
+									neighbours.get(1).removeNeighbour(v);
+									S.add(optimizeAddEdge(vertices, edges, v, neighbours.get(1)));
+								}
+								if (neighbours.get(1).n == 1 || neighbours.get(1).n == 2)
+								{
+									optimizeRemoveEdge(edges, v, neighbours.get(0));
+									v.removeNeighbour(neighbours.get(0));
+									neighbours.get(0).removeNeighbour(v);
+									S.add(optimizeAddEdge(vertices, edges, v, neighbours.get(0)));
+								}
+							}
+							break;
+						case 1:
+							if (v.getNeighbourCount() == 1)
+							{
+								//System.out.println("Optimizing vertex of degree 1");
+								optimizeFillEdges(vertices, edges, S, v, v.getUniqueNeighbours());
+								optimizing = true;
+							}
+							// else we could check if the other neighbours are all degree 1 except 1
+							break;
+					}
+				}
+			}
 		}
-		*/
-		RecursiveSolve(puzzleGrid, edgeList, edges, S, n);		
+		
+		System.out.println("Optimized: Edges Remaining(" + edges.size() + ") - Removed:" + (edgeList.size() - edges.size()));
+		updateGrid(puzzleGrid, edgeList, S);
+		dumpGrid(puzzleGrid);
+		
+		System.out.println("Remaining possible edges:");
+		updateGrid(puzzleGrid, edgeList, edges);
+		dumpGrid(puzzleGrid);
+		RecursiveSolve(puzzleGrid, vertices, edgeList, edges, S, solutionEdges);
+		
 		return puzzleGrid;
+	}
+	
+	// Find and return the first encountered neighbour
+	public static Vertex optimizeFindNeighbour(Vertex[][] vertices, int y, int x, int dY, int dX)
+	{
+		y += dY;
+		x += dX;
+		while ((y >= 0 && y < vertices.length && x >= 0 && x < vertices[0].length))
+		{			
+			//System.out.print(vertices[y][x]);
+			if (vertices[y][x] == null)
+			{
+				y += dY;
+				x += dX;
+			}
+			else if (vertices[y][x].currentN >= 1 && vertices[y][x].currentN <= 8)
+			{
+				return vertices[y][x];
+			}
+			else
+			{
+				break;
+			}
+		}
+		return null;
+	}
+	
+	public static void optimizeFillEdges(Vertex[][] vertices, ArrayList<Edge> edges, ArrayList<Edge> S, Vertex v, ArrayList<Vertex> neighbours)
+	{
+		for (Vertex neighbour : neighbours)
+		{
+			optimizeRemoveEdge(edges, v, neighbour);
+			v.removeNeighbour(neighbour);
+			neighbour.removeNeighbour(v);
+			S.add(optimizeAddEdge(vertices, edges, v, neighbour));
+		}
+	}
+	
+	// Compute the neighbours for each vertex in the grid
+	public static void optimizeComputeNeighbours(Vertex[][] vertices)
+	{
+		for (int y = 0; y < vertices.length; y++)
+		{
+			for (int x = 0; x < vertices[0].length; x++)
+			{
+				
+				if (vertices[y][x] != null && vertices[y][x].n >= 1 && vertices[y][x].n <= 8)
+				{
+					int n = vertices[y][x].n;
+					// Check for an edge in each direction
+					// Probably more room for submethods in here
+					Vertex v = optimizeFindNeighbour(vertices, y, x, 0, -1);
+					if (v != null)
+					{
+						vertices[y][x].addNeighbour(v);
+						if (n > 1 && v.n > 1)
+							vertices[y][x].addNeighbour(v);
+					}
+					v = optimizeFindNeighbour(vertices, y, x, 0, 1);
+					if (v != null)
+					{
+						vertices[y][x].addNeighbour(v);
+						if (n > 1 && v.n > 1)
+							vertices[y][x].addNeighbour(v);
+					}
+					v = optimizeFindNeighbour(vertices, y, x, -1, 0);
+					if (v != null)
+					{
+						vertices[y][x].addNeighbour(v);
+						if (n > 1 && v.n > 1)
+							vertices[y][x].addNeighbour(v);
+					}
+					v = optimizeFindNeighbour(vertices, y, x, 1, 0);
+					if (v != null)
+					{
+						vertices[y][x].addNeighbour(v);
+						if (n > 1 && v.n > 1)
+							vertices[y][x].addNeighbour(v);
+					}
+				}
+			}
+		}
+	}
+	
+	// Will need to remove neighbours that are blocked by the edge
+	public static Edge optimizeAddEdge(Vertex[][] vertices, ArrayList<Edge> edges, Vertex start, Vertex end)
+	{		
+		Edge result = new Edge(start, end, (start.y == end.y) ? 0 : 1);
+		
+		// For every line of the edge, scan the perpendicular for pairs of vertices
+		ArrayList<Vertex> edgeSquares = result.edgeSquares;
+		for (int i = 0 ; i < edgeSquares.size(); i++)
+		{
+			Vertex currentSquare = edgeSquares.get(i);
+			// direction == 0 means the edge is vertical, so scan the horizontal
+			if (result.direction == 1)
+			{
+				Vertex left = optimizeFindNeighbour(vertices, currentSquare.y, currentSquare.x, 0, -1);
+				Vertex right = optimizeFindNeighbour(vertices, currentSquare.y, currentSquare.x, 0, 1);
+				//System.out.println("Left: " + left + " - Right: " + right);
+				// If we find a vertex in both directions, they are no longer neighbours of eachother
+				if (left != null && right != null)
+				{
+					left.removeNeighbour(right);
+					left.removeNeighbour(right);					
+					right.removeNeighbour(left);
+					right.removeNeighbour(left);
+					optimizeRemoveEdge(edges, left, right);
+					optimizeRemoveEdge(edges, left, right);
+				}
+			}
+			else
+			{
+				Vertex up = optimizeFindNeighbour(vertices, currentSquare.y, currentSquare.x, -1, 0);
+				Vertex down = optimizeFindNeighbour(vertices, currentSquare.y, currentSquare.x, 1, 0);
+				if (up != null && down != null)
+				{
+					up.removeNeighbour(down);
+					up.removeNeighbour(down);
+					down.removeNeighbour(up);
+					down.removeNeighbour(up);
+					optimizeRemoveEdge(edges, up, down);
+					optimizeRemoveEdge(edges, up, down);
+				}
+			}
+		}
+		
+		start.currentN--;
+		end.currentN--;
+		
+		if (start.currentN == 0)
+		{
+			for (Vertex neighbour : start.neighbours)
+			{
+				neighbour.removeNeighbour(start);
+				optimizeRemoveEdge(edges, start, neighbour);
+			}
+		}
+		if (end.currentN == 0)
+		{
+			for (Vertex neighbour : end.neighbours)
+			{
+				neighbour.removeNeighbour(end);
+				optimizeRemoveEdge(edges, end, neighbour);
+			}
+		}
+		
+		
+		// Decrement the n of both vertices
+		// If a vertex reaches 0, remove all its neighbours
+		
+		// For each square in the edge travel in both directions perpendicular to the edge
+		// If a vertex is encountered in both directions (before encountering another edge or the boundary)
+		// They are no longer neighbours of eachother.
+		return result;
+	}
+	
+	public static void optimizeRemoveEdge(ArrayList<Edge> edgeList, Vertex a, Vertex b)
+	{
+		for (Edge e : edgeList)
+		{
+			if ((e.a.y == a.y && e.a.x == a.x && e.b.y == b.y && e.b.x == b.x)
+				|| (e.a.y == b.y && e.a.x == b.x && e.b.y == a.y && e.b.x == a.x))
+			{
+				edgeList.remove(e);
+				break;
+			}
+		}
 	}
 	
 	public static int computeCardinality(int[][] puzzleGrid)
@@ -68,7 +362,7 @@ public class BridgesSolver
 		for (int y = 0; y < puzzleGrid.length; y++)
 		{
 			for (int x = 0; x < puzzleGrid[0].length; x++)
-			{				
+			{
 				int square = puzzleGrid[y][x];
 				// Found a vertex
 				if (isVertex(square))
@@ -79,11 +373,11 @@ public class BridgesSolver
 	}
 	
 	// n is the # of vertices in the puzzle
-	public static boolean RecursiveSolve(int[][] puzzleGrid, ArrayList<Edge> edgeList, ArrayList<Edge> edges, HashSet<Edge> S, int n)
-	{			
+	public static boolean RecursiveSolve(int[][] puzzleGrid, Vertex[][] vertices, ArrayList<Edge> edgeList, ArrayList<Edge> edges, ArrayList<Edge> S, int n)
+	{
 		if (S.size() >= n || edges.isEmpty())
 		{
-			if (S.size() < n)
+			if (S.size() != n)
 				return false;
 			updateGrid(puzzleGrid, edgeList, S); // Since we're working with an edge list we'll need to make sure the grid we're passing in here is the fully processed one
 			/*
@@ -97,11 +391,12 @@ public class BridgesSolver
 		}
 		ArrayList<Edge> edgesPrime = new ArrayList<Edge>(edges);
 		Edge e = edgesPrime.remove(0);
-		if (RecursiveSolve(puzzleGrid, edgeList, edgesPrime, S, n))
+		if (RecursiveSolve(puzzleGrid, vertices, edgeList, edgesPrime, S, n))
 			return true;
 		// Assume next edge is in the solution:
 		S.add(e);
-		if (RecursiveSolve(puzzleGrid, edgeList, edgesPrime, S, n))
+		optimizeAddEdge(vertices, edgesPrime, e.a, e.b);
+		if (RecursiveSolve(puzzleGrid, vertices, edgeList, edgesPrime, S, n))
 			return true;
 		S.remove(e);
 		return false;
@@ -112,7 +407,7 @@ public class BridgesSolver
 	{
 		Vertex currentSquare = new Vertex(y, x, puzzleGrid[y][x]);
 		y += dY;
-		x += dX;		
+		x += dX;
 		while (inBounds(puzzleGrid, y, x))
 		{
 			if (isVertex(puzzleGrid[y][x]))
@@ -134,8 +429,8 @@ public class BridgesSolver
 			for (int x = 0; x < puzzleGrid[0].length; x++)
 			{
 				if (puzzleGrid[y][x] >= 2 && puzzleGrid[y][x] <= 8)
-				{					
-					// Check for an edge in each direction					
+				{
+					// Check for an edge in each direction
 					Edge e = findEdge(puzzleGrid, y, x, 0, -1);
 					if (e != null)
 						edgeList.add(e);
@@ -156,7 +451,7 @@ public class BridgesSolver
 	
 	
 	// Update the grid by removing edges in 'edges' and adding edges in S	
-	public static void updateGrid(int[][] puzzleGrid, ArrayList<Edge> edges, HashSet<Edge> S)
+	public static void updateGrid(int[][] puzzleGrid, ArrayList<Edge> edges, ArrayList<Edge> S)
 	{
 		// First clear any unused edges
 		for (Edge e : edges)
@@ -207,7 +502,7 @@ public class BridgesSolver
 		for (int y = 0; y < puzzleGrid.length; y++)
 		{
 			for (int x = 0; x < puzzleGrid[0].length; x++)
-			{				
+			{
 				int square = puzzleGrid[y][x];
 				// Found a vertex
 				if (isVertex(square))
@@ -237,7 +532,7 @@ public class BridgesSolver
 			if (currentVertex.n == leftWeight + rightWeight + upWeight + downWeight)
 				verified[y][x] = true;
 			else
-			{			
+			{
 				if (invalidDump)
 				{
 					System.out.println("Vertex at " + x + ", " + y + " has invalid edges");
@@ -251,7 +546,7 @@ public class BridgesSolver
 		{
 			for (int x = 0; x < puzzleGrid[0].length; x++)
 			{
-				if (!verified[y][x] && puzzleGrid[y][x] != -1)
+				if (!verified[y][x] && puzzleGrid[y][x] > 0)
 				{
 					if(invalidDump)
 						System.out.println("Invalid square at " + x + ", " + y + " --> " + puzzleGrid[y][x]);
@@ -289,7 +584,7 @@ public class BridgesSolver
 			}
 			verified[y][x] = true;
 			y += dY;
-			x += dX;			
+			x += dX;
 		}
 		return false;
 	}
@@ -326,104 +621,13 @@ public class BridgesSolver
 		return (n >= 1 && n <= 8);
 	}		
 	
-	public static class Vertex
-	{
-		public ArrayList<Vertex> neighbours;
-		public int y;
-		public int x;		
-		public int n;
-		
-		public Vertex(int y, int x, int n)
-		{
-			neighbours = new ArrayList<Vertex>();
-			this.y = y;
-			this.x = x;			
-			this.n = n;
-		}
-		
-		public void addNeighbour(Vertex v)
-		{
-			neighbours.add(v);			
-		}
-		
-		public void removeNeighbour(Vertex v)
-		{
-			neighbours.remove(v);
-		}					
-		
-		public int getDegree()
-		{
-			return neighbours.size();
-		}
-	}
-	
-	public static class Edge
-	{
-		public Vertex a;
-		public Vertex b;
-		public int direction;
-		public ArrayList<Vertex> edgeSquares;
-		
-		public Edge(Vertex a, Vertex b, int direction)
-		{
-			this.a = a;
-			this.b = b;
-			this.direction = direction;
-			edgeSquares = new ArrayList<Vertex>();
-			addLine(a.y, a.x, b.y, b.x);
-			removeSquare(a);
-			removeSquare(b);
-		}
-		
-		public void addSquare(Vertex v)
-		{
-			edgeSquares.add(v);
-		}
-		
-		public void removeSquare(Vertex v)
-		{
-			edgeSquares.remove(v);
-		}
-		
-		public void addLine(int y1, int x1, int y2, int x2)
-		{
-			if (y1 == y2)
-			{
-				while (x1 > x2)
-				{
-					addSquare(new Vertex(y1, x1--, 0));
-				}
-				while (x1 < x2)
-				{
-					addSquare(new Vertex(y1, x1++, 0));
-				}
-			}
-			else
-			{
-				while (y1 > y2)
-				{
-					addSquare(new Vertex(y1--, x1, 0));
-				}
-				while (y1 < y2)
-				{
-					addSquare(new Vertex(y1++, x1, 0));
-				}
-			}			
-		}
-		
-		public String toString()
-		{
-			return "E: " + a.x + "," + a.y + " - " + b.x + "," + b.y;
-		}
-	}
-	
 	public static void dumpGrid(int[][] puzzleGrid)
 	{
 		for (int[] row : puzzleGrid)
 		{
 			for (int square : row)
 			{
-				if (square >= 1 && square <= 8)
+				if (square >= 0 && square <= 8)
 					System.out.print(square);
 				else if (square == -1)
 					System.out.print(' ');
@@ -490,13 +694,13 @@ public class BridgesSolver
 			if (valuesRead < x*y)
 			{
 				System.out.printf("Grid for graph %d contains too few values.\n",graphNum);
-				System.out.println("Expected " + x*y + " values");				
+				System.out.println("Expected " + x*y + " values");
 				break;
 			}
 			System.out.println("Input grid:");
 			dumpGrid(G);
-			long startTime = System.currentTimeMillis();			
-			int[][] solvedPuzzle = Solve(G);						
+			long startTime = System.currentTimeMillis();
+			int[][] solvedPuzzle = Solve(G);
 			long endTime = System.currentTimeMillis();
 			totalTimeSeconds += (endTime-startTime)/1000.0;
 						
@@ -512,6 +716,6 @@ public class BridgesSolver
 		graphNum--;
 		System.out.printf("Processed %d grid%s.\n",graphNum,(graphNum != 1)?"s":"");
 		System.out.printf("Total Time (seconds): %.2f\n",totalTimeSeconds);
-		System.out.printf("Average Time (seconds): %.2f\n",(graphNum>0)?totalTimeSeconds/graphNum:0);		
+		System.out.printf("Average Time (seconds): %.2f\n",(graphNum>0)?totalTimeSeconds/graphNum:0);
 	}
 }
