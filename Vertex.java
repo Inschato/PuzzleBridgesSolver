@@ -45,7 +45,7 @@ public class Vertex
 		return new ArrayList<Vertex>(uniqueNeighbours);
 	}
 	
-	public int getDegree()
+	public int getAvailableEdgesCount()
 	{
 		return neighbours.size();
 	}
